@@ -338,20 +338,67 @@ button.danger {
   font-size: 0.8rem;
 }
 
-/* voter chips under each result */
-.voters {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 7px;
+/* right-side drawer listing a question's voters */
+.drawer-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+  z-index: 40;
 }
-.chip {
-  font-size: 0.75rem;
-  padding: 2px 9px;
-  border-radius: 999px;
-  background: var(--card-2);
-  border: 1px solid var(--border);
+.drawer-overlay.show {
+  opacity: 1;
+  pointer-events: auto;
+}
+.drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 360px;
+  max-width: 88vw;
+  background: var(--card);
+  border-left: 1px solid var(--border);
+  box-shadow: -10px 0 30px rgba(0, 0, 0, 0.22);
+  transform: translateX(100%);
+  transition: transform 0.24s ease;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+}
+.drawer.open {
+  transform: translateX(0);
+}
+.drawer-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px;
+  border-bottom: 1px solid var(--border);
+}
+.drawer-title {
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.drawer-body {
+  padding: 6px 18px 24px;
+  overflow-y: auto;
+}
+.voter-line {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 2px;
+  border-bottom: 1px solid var(--border);
+  overflow-wrap: anywhere;
+}
+.voter-num {
   color: var(--muted);
+  font-size: 0.78rem;
+  min-width: 20px;
 }
 .result {
   margin-bottom: 16px;
