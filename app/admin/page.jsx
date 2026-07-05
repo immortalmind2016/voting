@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import Bars from '@/app/components/Bars';
 import Countdown from '@/app/components/Countdown';
+import { AdminSkeleton } from '@/app/components/Skeleton';
 import { PHASE_LABEL } from '@/lib/poll';
 
 export default function AdminPage() {
@@ -26,7 +27,7 @@ export default function AdminPage() {
     return () => clearInterval(t);
   }, [load]);
 
-  if (authed === null) return <p className="muted">Loading…</p>;
+  if (authed === null) return <AdminSkeleton />;
   if (!authed) return <Login onDone={load} />;
 
   return (
@@ -174,10 +175,18 @@ function BoardRow({ board, onChange }) {
   const [minutes, setMinutes] = useState(5);
   const [results, setResults] = useState(null);
   const [showResults, setShowResults] = useState(false);
+  const [hidden, setHidden] = useState([]); // questions removed optimistically
 
   useEffect(() => {
     setShareUrl(`${window.location.origin}/p/${board.slug}`);
   }, [board.slug]);
+
+  // Drop hidden ids once the server confirms they're gone.
+  useEffect(() => {
+    setHidden((prev) =>
+      prev.filter((id) => board.questions.some((q) => q.id === id))
+    );
+  }, [board.questions]);
 
   async function patch(update) {
     const res = await fetch(`/api/polls/${board.slug}/status`, {
@@ -193,9 +202,14 @@ function BoardRow({ board, onChange }) {
   }
 
   async function deleteQuestion(id) {
-    await fetch(`/api/polls/${board.slug}/options?id=${id}`, {
+    setHidden((prev) => [...prev, id]); // hide immediately
+    const res = await fetch(`/api/polls/${board.slug}/options?id=${id}`, {
       method: 'DELETE',
     });
+    if (!res.ok) {
+      setHidden((prev) => prev.filter((x) => x !== id)); // put it back
+      return;
+    }
     onChange();
   }
 
@@ -219,6 +233,9 @@ function BoardRow({ board, onChange }) {
 
   const mins = () => Math.max(0, parseInt(minutes, 10) || 0);
   const phase = board.phase;
+  const visibleQuestions = board.questions.filter(
+    (q) => !hidden.includes(q.id)
+  );
 
   return (
     <div className="card">
@@ -232,8 +249,8 @@ function BoardRow({ board, onChange }) {
         {board.timerEndsAt && <Countdown endsAt={board.timerEndsAt} />}
       </div>
       <div className="muted small mt">
-        {board.questions.length} question
-        {board.questions.length === 1 ? '' : 's'} · {board.votesPerPerson} vote
+        {visibleQuestions.length} question
+        {visibleQuestions.length === 1 ? '' : 's'} · {board.votesPerPerson} vote
         {board.votesPerPerson > 1 ? 's' : ''}/person · {board.participants}{' '}
         joined · {board.voted} voted
       </div>
@@ -251,12 +268,12 @@ function BoardRow({ board, onChange }) {
       {(phase === 'questions' || phase === 'review') && (
         <div className="mt">
           <div className="muted small mb">
-            Questions ({board.questions.length})
+            Questions ({visibleQuestions.length})
           </div>
-          {board.questions.length === 0 && (
+          {visibleQuestions.length === 0 && (
             <div className="muted small">No questions yet.</div>
           )}
-          {board.questions.map((q) => (
+          {visibleQuestions.map((q) => (
             <div className="opt-item" key={q.id}>
               <span dir="auto" style={{ flex: 1 }}>
                 {q.text}

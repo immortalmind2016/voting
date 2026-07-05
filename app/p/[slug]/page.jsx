@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import Bars from '@/app/components/Bars';
 import Countdown from '@/app/components/Countdown';
+import { BoardSkeleton } from '@/app/components/Skeleton';
 import { PHASE_LABEL } from '@/lib/poll';
 
 export default function VotePage() {
@@ -38,7 +39,7 @@ export default function VotePage() {
     return () => clearInterval(t);
   }, [loadBoard, loadResults]);
 
-  if (board === undefined) return <p className="muted">Loading…</p>;
+  if (board === undefined) return <BoardSkeleton />;
   if (board === null)
     return (
       <main>
@@ -142,37 +143,76 @@ function Join({ slug, onJoined }) {
 function WriteQuestions({ slug, board, onChange }) {
   const [text, setText] = useState('');
   const [error, setError] = useState('');
-  const [busy, setBusy] = useState(false);
+  const [optimistic, setOptimistic] = useState([]); // {tempId, text} not yet confirmed
+  const [hidden, setHidden] = useState([]); // ids removed optimistically
+  const tempId = useRef(0);
+  const me = board.me.username;
+
+  // Reconcile with the server list: drop optimistic adds once they show up,
+  // and drop hidden ids once the server confirms they're gone.
+  useEffect(() => {
+    setOptimistic((prev) =>
+      prev.filter(
+        (o) =>
+          !board.questions.some(
+            (q) => q.text.toLowerCase() === o.text.toLowerCase()
+          )
+      )
+    );
+    setHidden((prev) =>
+      prev.filter((id) => board.questions.some((q) => q.id === id))
+    );
+  }, [board.questions]);
 
   async function add(e) {
     e.preventDefault();
-    if (!text.trim()) return;
+    const value = text.trim();
+    if (!value) return;
     setError('');
-    setBusy(true);
+    const exists =
+      board.questions.some((q) => q.text.toLowerCase() === value.toLowerCase()) ||
+      optimistic.some((o) => o.text.toLowerCase() === value.toLowerCase());
+    if (exists) {
+      setError('That question already exists');
+      return;
+    }
+    // Show it immediately, then confirm with the server.
+    const tid = `t${tempId.current++}`;
+    setOptimistic((prev) => [...prev, { tempId: tid, text: value }]);
+    setText('');
     const res = await fetch(`/api/polls/${slug}/options`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text }),
+      body: JSON.stringify({ text: value }),
     });
-    setBusy(false);
-    const data = await res.json().catch(() => ({}));
     if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      setOptimistic((prev) => prev.filter((o) => o.tempId !== tid));
       setError(data.error || 'Could not add question');
       return;
     }
-    setText('');
-    onChange();
+    onChange(); // pull the confirmed list; the effect prunes the temp item
   }
 
   async function remove(id) {
-    await fetch(`/api/polls/${slug}/options?id=${id}`, { method: 'DELETE' });
+    setHidden((prev) => [...prev, id]); // hide immediately
+    const res = await fetch(`/api/polls/${slug}/options?id=${id}`, {
+      method: 'DELETE',
+    });
+    if (!res.ok) {
+      setHidden((prev) => prev.filter((x) => x !== id)); // put it back
+      return;
+    }
     onChange();
   }
+
+  const visible = board.questions.filter((q) => !hidden.includes(q.id));
+  const count = visible.length + optimistic.length;
 
   return (
     <div className="card">
       <h2>
-        Write your questions, <bdi>{board.me.username}</bdi>
+        Write your questions, <bdi>{me}</bdi>
       </h2>
       <p className="muted small mb">
         Add as many questions as you like. This list updates live as others add
@@ -189,15 +229,15 @@ function WriteQuestions({ slug, board, onChange }) {
           onChange={(e) => setText(e.target.value)}
           style={{ flex: 1 }}
         />
-        <button disabled={busy || !text.trim()}>Add</button>
+        <button disabled={!text.trim()}>Add</button>
       </form>
       {error && <div className="error mb">{error}</div>}
 
       <div className="muted small mb">
-        {board.questions.length} question
-        {board.questions.length === 1 ? '' : 's'} so far
+        {count} question{count === 1 ? '' : 's'} so far
       </div>
-      {board.questions.map((q) => (
+
+      {visible.map((q) => (
         <div className="opt-item" key={q.id}>
           <span dir="auto" style={{ flex: 1 }}>
             {q.text}
@@ -207,11 +247,22 @@ function WriteQuestions({ slug, board, onChange }) {
               by <bdi>{q.addedBy}</bdi>
             </span>
           )}
-          {q.addedBy === board.me.username && (
+          {q.addedBy === me && (
             <button className="x" onClick={() => remove(q.id)}>
               remove
             </button>
           )}
+        </div>
+      ))}
+
+      {optimistic.map((o) => (
+        <div className="opt-item pending" key={o.tempId}>
+          <span dir="auto" style={{ flex: 1 }}>
+            {o.text}
+          </span>
+          <span className="pending-tag">
+            <span className="spinner" /> sending…
+          </span>
         </div>
       ))}
     </div>
