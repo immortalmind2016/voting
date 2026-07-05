@@ -6,12 +6,20 @@ ready to deploy on **Vercel**.
 
 ## How it works
 
-- **You (organizer)** log into `/admin` with a password and create polls. For
-  each poll you set the options and **how many votes each person gets**.
-- **Voters** open the shared link (`/p/<code>`), pick a username, and cast up to
-  N votes — **one vote per option** (so N votes = N different options).
-- **Results stay hidden** until you close the poll or hit *Reveal results*.
-  Voter pages then update automatically.
+- **You (organizer)** log into `/admin` with a password and create a poll. You
+  set **how many votes each person gets** and choose who supplies the options:
+  either you set them up front, or **participants add their own** during the
+  session.
+- Each poll moves through three phases you control:
+  1. **Collecting** — people join with a username and add their questions /
+     options (live). Skipped if you set the options yourself.
+  2. **Voting** — you hit *Start voting*; options lock and people cast up to N
+     votes, **one per option** (N votes = N different options).
+  3. **Closed** — you hit *Close voting* to stop it.
+- **Votes are not anonymous:** results show each option's tally *and* who voted
+  for it, plus who suggested each option.
+- **Results stay hidden** from voters until you hit *Reveal results*. Voter
+  pages update automatically as phases change.
 
 ## 1. Set up MongoDB (Atlas — free tier is fine)
 

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/mongodb';
+import { pollPhase } from '@/lib/poll';
 
 // A voter picks a username and joins the poll. We identify them afterwards
 // with an httpOnly cookie so they can't be impersonated from the client.
@@ -20,7 +21,7 @@ export async function POST(request, { params }) {
   if (!poll) {
     return NextResponse.json({ error: 'Poll not found' }, { status: 404 });
   }
-  if (poll.status === 'closed') {
+  if (pollPhase(poll) === 'closed') {
     return NextResponse.json({ error: 'This poll is closed' }, { status: 403 });
   }
 

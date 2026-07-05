@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { ObjectId } from 'mongodb';
 import { cookies } from 'next/headers';
 import { getDb } from '@/lib/mongodb';
+import { pollPhase } from '@/lib/poll';
 
 // Cast a ballot: up to votesPerPerson DISTINCT options, one vote each.
 export async function POST(request, { params }) {
@@ -13,8 +14,11 @@ export async function POST(request, { params }) {
   if (!poll) {
     return NextResponse.json({ error: 'Poll not found' }, { status: 404 });
   }
-  if (poll.status === 'closed') {
-    return NextResponse.json({ error: 'This poll is closed' }, { status: 403 });
+  if (pollPhase(poll) !== 'voting') {
+    return NextResponse.json(
+      { error: 'Voting is not open right now' },
+      { status: 403 }
+    );
   }
 
   const voterId = cookies().get(`voter_${slug}`)?.value;

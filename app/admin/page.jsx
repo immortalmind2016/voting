@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import Bars from '@/app/components/Bars';
 
 export default function AdminPage() {
   const [authed, setAuthed] = useState(null); // null = loading
@@ -94,6 +95,7 @@ function Login({ onDone }) {
 function CreatePoll({ onCreated }) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [collect, setCollect] = useState(true);
   const [options, setOptions] = useState(['', '']);
   const [votesPerPerson, setVotesPerPerson] = useState(1);
   const [error, setError] = useState('');
@@ -106,7 +108,7 @@ function CreatePoll({ onCreated }) {
     setOptions((o) => [...o, '']);
   }
   function removeOption(i) {
-    setOptions((o) => (o.length <= 2 ? o : o.filter((_, idx) => idx !== i)));
+    setOptions((o) => (o.length <= 1 ? o : o.filter((_, idx) => idx !== i)));
   }
 
   async function submit(e) {
@@ -116,7 +118,13 @@ function CreatePoll({ onCreated }) {
     const res = await fetch('/api/polls', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title, description, options, votesPerPerson }),
+      body: JSON.stringify({
+        title,
+        description,
+        options,
+        votesPerPerson,
+        collectFromParticipants: collect,
+      }),
     });
     setBusy(false);
     const data = await res.json().catch(() => ({}));
@@ -128,6 +136,7 @@ function CreatePoll({ onCreated }) {
     setDescription('');
     setOptions(['', '']);
     setVotesPerPerson(1);
+    setCollect(true);
     onCreated();
   }
 
@@ -139,6 +148,7 @@ function CreatePoll({ onCreated }) {
         <input
           type="text"
           value={title}
+          dir="auto"
           placeholder="e.g. Which features should we build next?"
           onChange={(e) => setTitle(e.target.value)}
         />
@@ -147,17 +157,43 @@ function CreatePoll({ onCreated }) {
         <label>Description (optional)</label>
         <textarea
           value={description}
+          dir="auto"
           onChange={(e) => setDescription(e.target.value)}
         />
       </div>
 
       <div className="field">
-        <label>Options / statements</label>
+        <label>Who adds the options?</label>
+        <div className="row">
+          <label className="option" style={{ flex: 1, marginBottom: 0 }}>
+            <input
+              type="radio"
+              checked={collect}
+              onChange={() => setCollect(true)}
+            />
+            <span>Participants add them in the session</span>
+          </label>
+          <label className="option" style={{ flex: 1, marginBottom: 0 }}>
+            <input
+              type="radio"
+              checked={!collect}
+              onChange={() => setCollect(false)}
+            />
+            <span>I&apos;ll set them now</span>
+          </label>
+        </div>
+      </div>
+
+      <div className="field">
+        <label>
+          {collect ? 'Starting options (optional)' : 'Options / statements'}
+        </label>
         {options.map((opt, i) => (
           <div className="row" key={i} style={{ marginBottom: 8 }}>
             <input
               type="text"
               value={opt}
+              dir="auto"
               placeholder={`Option ${i + 1}`}
               onChange={(e) => setOption(i, e.target.value)}
               style={{ flex: 1 }}
@@ -166,7 +202,7 @@ function CreatePoll({ onCreated }) {
               type="button"
               className="ghost small"
               onClick={() => removeOption(i)}
-              disabled={options.length <= 2}
+              disabled={options.length <= 1}
               title="Remove"
             >
               ✕
@@ -176,6 +212,12 @@ function CreatePoll({ onCreated }) {
         <button type="button" className="ghost small" onClick={addOption}>
           + Add option
         </button>
+        {collect && (
+          <div className="muted small mt">
+            You can leave these empty — participants add options during the
+            collecting phase, then you start the vote.
+          </div>
+        )}
       </div>
 
       <div className="field" style={{ maxWidth: 220 }}>
@@ -210,10 +252,21 @@ function PollRow({ poll, onChange }) {
   }, [poll.slug]);
 
   async function patch(update) {
-    await fetch(`/api/polls/${poll.slug}/status`, {
+    const res = await fetch(`/api/polls/${poll.slug}/status`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(update),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      alert(data.error || 'Could not update poll');
+    }
+    onChange();
+  }
+
+  async function deleteOption(id) {
+    await fetch(`/api/polls/${poll.slug}/options?id=${id}`, {
+      method: 'DELETE',
     });
     onChange();
   }
@@ -237,19 +290,27 @@ function PollRow({ poll, onChange }) {
     setTimeout(() => setCopied(false), 1500);
   }
 
+  const phaseLabel = {
+    collecting: 'collecting options',
+    voting: 'voting open',
+    closed: 'closed',
+  }[poll.phase];
+
   return (
     <div className="card">
       <div className="row spread">
         <div>
-          <strong>{poll.title}</strong>{' '}
-          <span className={`badge ${poll.status}`}>{poll.status}</span>{' '}
+          <bdi>
+            <strong>{poll.title}</strong>
+          </bdi>{' '}
+          <span className={`badge ${poll.phase}`}>{phaseLabel}</span>{' '}
           {poll.resultsRevealed && (
-            <span className="badge revealed">results shown</span>
+            <span className="badge voting">results shown</span>
           )}
         </div>
       </div>
       <div className="muted small mt">
-        {poll.optionCount} options · {poll.votesPerPerson} vote
+        {poll.options.length} options · {poll.votesPerPerson} vote
         {poll.votesPerPerson > 1 ? 's' : ''}/person · {poll.participants} joined
         · {poll.voted} voted
       </div>
@@ -263,14 +324,54 @@ function PollRow({ poll, onChange }) {
         </button>
       </div>
 
+      {/* submitted options + moderation while collecting */}
+      {poll.phase === 'collecting' && (
+        <div className="mt">
+          <div className="muted small mb">
+            Options so far ({poll.options.length}) — participants are adding
+            these live:
+          </div>
+          {poll.options.length === 0 && (
+            <div className="muted small">No options yet.</div>
+          )}
+          {poll.options.map((o) => (
+            <div className="opt-item" key={o.id}>
+              <span dir="auto" style={{ flex: 1 }}>
+                {o.text}
+              </span>
+              {o.addedBy && (
+                <span className="who">
+                  by <bdi>{o.addedBy}</bdi>
+                </span>
+              )}
+              <button className="x" onClick={() => deleteOption(o.id)}>
+                remove
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
       <div className="row mt">
-        {poll.status === 'open' ? (
-          <button className="ghost small" onClick={() => patch({ status: 'closed' })}>
-            Close poll
+        {poll.phase === 'collecting' && (
+          <button className="small" onClick={() => patch({ phase: 'voting' })}>
+            ▶ Start voting
           </button>
-        ) : (
-          <button className="ghost small" onClick={() => patch({ status: 'open' })}>
-            Reopen
+        )}
+        {poll.phase === 'voting' && (
+          <button
+            className="ghost small"
+            onClick={() => patch({ phase: 'closed' })}
+          >
+            Close voting
+          </button>
+        )}
+        {poll.phase === 'closed' && (
+          <button
+            className="ghost small"
+            onClick={() => patch({ phase: 'voting' })}
+          >
+            Reopen voting
           </button>
         )}
         <button
@@ -302,25 +403,6 @@ function PollRow({ poll, onChange }) {
           </button>
         </>
       )}
-    </div>
-  );
-}
-
-function Bars({ results }) {
-  const max = Math.max(1, ...results.map((r) => r.votes));
-  return (
-    <div>
-      {results.map((r) => (
-        <div className="result" key={r.id}>
-          <div className="top">
-            <span>{r.text}</span>
-            <strong>{r.votes}</strong>
-          </div>
-          <div className="bar">
-            <span style={{ width: `${(r.votes / max) * 100}%` }} />
-          </div>
-        </div>
-      ))}
     </div>
   );
 }

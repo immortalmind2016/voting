@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/mongodb';
 import { isAdmin } from '@/lib/auth';
+import { pollPhase } from '@/lib/poll';
 
-// Tallies. Admins can always see them; voters only once results are revealed.
+// Tallies, including who voted for each option (votes are not anonymous).
+// Admins can always see them; voters only once results are revealed.
 export async function GET(request, { params }) {
   const { slug } = params;
   const db = await getDb();
@@ -11,39 +13,48 @@ export async function GET(request, { params }) {
     return NextResponse.json({ error: 'Poll not found' }, { status: 404 });
   }
 
+  const phase = pollPhase(poll);
   const admin = isAdmin();
   if (!poll.resultsRevealed && !admin) {
-    return NextResponse.json({ revealed: false, status: poll.status });
+    return NextResponse.json({ revealed: false, phase });
   }
 
-  const agg = await db
+  const voters = await db
     .collection('participants')
-    .aggregate([
-      { $match: { pollId: poll._id } },
-      { $unwind: '$votes' },
-      { $group: { _id: '$votes', count: { $sum: 1 } } },
-    ])
+    .find(
+      { pollId: poll._id, hasVoted: true },
+      { projection: { username: 1, votes: 1 } }
+    )
     .toArray();
-  const counts = Object.fromEntries(agg.map((a) => [a._id, a.count]));
+
+  const byOption = {};
+  for (const v of voters) {
+    for (const optId of v.votes || []) {
+      (byOption[optId] ||= []).push(v.username);
+    }
+  }
 
   const results = poll.options
-    .map((o) => ({ id: o.id, text: o.text, votes: counts[o.id] || 0 }))
+    .map((o) => ({
+      id: o.id,
+      text: o.text,
+      addedBy: o.addedBy || null,
+      votes: (byOption[o.id] || []).length,
+      voters: (byOption[o.id] || []).sort((a, b) => a.localeCompare(b)),
+    }))
     .sort((a, b) => b.votes - a.votes);
 
   const totalParticipants = await db
     .collection('participants')
     .countDocuments({ pollId: poll._id });
-  const totalVoted = await db
-    .collection('participants')
-    .countDocuments({ pollId: poll._id, hasVoted: true });
 
   return NextResponse.json({
     revealed: true,
     title: poll.title,
-    status: poll.status,
+    phase,
     votesPerPerson: poll.votesPerPerson,
     results,
     totalParticipants,
-    totalVoted,
+    totalVoted: voters.length,
   });
 }

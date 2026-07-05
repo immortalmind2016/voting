@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/mongodb';
 import { isAdmin } from '@/lib/auth';
+import { pollPhase } from '@/lib/poll';
 
 // List all polls with participation counts (admin only).
 export async function GET() {
@@ -26,17 +27,19 @@ export async function GET() {
       },
     ])
     .toArray();
-  const byPoll = Object.fromEntries(
-    counts.map((c) => [String(c._id), c])
-  );
+  const byPoll = Object.fromEntries(counts.map((c) => [String(c._id), c]));
 
   const out = polls.map((p) => ({
     slug: p.slug,
     title: p.title,
     description: p.description || '',
     votesPerPerson: p.votesPerPerson,
-    optionCount: p.options.length,
-    status: p.status,
+    options: (p.options || []).map((o) => ({
+      id: o.id,
+      text: o.text,
+      addedBy: o.addedBy || null,
+    })),
+    phase: pollPhase(p),
     resultsRevealed: p.resultsRevealed,
     createdAt: p.createdAt,
     participants: byPoll[String(p._id)]?.participants || 0,
@@ -53,6 +56,7 @@ export async function POST(request) {
   const body = await request.json().catch(() => ({}));
   const title = String(body.title || '').trim();
   const description = String(body.description || '').trim();
+  const collectFromParticipants = body.collectFromParticipants === true;
   const options = (Array.isArray(body.options) ? body.options : [])
     .map((t) => String(t).trim())
     .filter(Boolean);
@@ -64,9 +68,10 @@ export async function POST(request) {
   if (!title) {
     return NextResponse.json({ error: 'Title is required' }, { status: 400 });
   }
-  if (options.length < 2) {
+  // If participants supply the options, we can start with none.
+  if (!collectFromParticipants && options.length < 2) {
     return NextResponse.json(
-      { error: 'Add at least two options' },
+      { error: 'Add at least two options (or let participants add them)' },
       { status: 400 }
     );
   }
@@ -79,9 +84,10 @@ export async function POST(request) {
     options: options.map((text) => ({
       id: crypto.randomBytes(4).toString('hex'),
       text,
+      addedBy: null, // added by the organizer
     })),
     votesPerPerson,
-    status: 'open',
+    phase: collectFromParticipants ? 'collecting' : 'voting',
     resultsRevealed: false,
     createdAt: new Date(),
   };

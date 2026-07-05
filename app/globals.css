@@ -159,9 +159,13 @@ button.danger {
   text-transform: uppercase;
   letter-spacing: 0.03em;
 }
-.badge.open {
+.badge.voting {
   background: rgba(53, 196, 106, 0.15);
   color: var(--good);
+}
+.badge.collecting {
+  background: rgba(240, 180, 41, 0.16);
+  color: #f0b429;
 }
 .badge.closed {
   background: rgba(255, 107, 107, 0.15);
@@ -249,4 +253,51 @@ button.danger {
 
 .center {
   text-align: center;
+}
+
+/* submitted-option list (collecting phase) */
+.opt-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  margin-bottom: 8px;
+  background: var(--card-2);
+}
+.opt-item .who {
+  color: var(--muted);
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+.opt-item .x {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--bad);
+  padding: 3px 9px;
+  font-size: 0.8rem;
+}
+
+/* voter chips under each result */
+.voters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 7px;
+}
+.chip {
+  font-size: 0.75rem;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: var(--card-2);
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+.result {
+  margin-bottom: 16px;
+}
+.by {
+  color: var(--muted);
+  font-size: 0.75rem;
 }

@@ -3,6 +3,7 @@ import { ObjectId } from 'mongodb';
 import { cookies } from 'next/headers';
 import { getDb } from '@/lib/mongodb';
 import { isAdmin } from '@/lib/auth';
+import { pollPhase } from '@/lib/poll';
 
 // Public poll info for the voter page (never includes tallies).
 // Also returns the current voter's own state if they've joined.
@@ -30,9 +31,13 @@ export async function GET(request, { params }) {
     slug: poll.slug,
     title: poll.title,
     description: poll.description || '',
-    options: poll.options.map((o) => ({ id: o.id, text: o.text })),
+    options: poll.options.map((o) => ({
+      id: o.id,
+      text: o.text,
+      addedBy: o.addedBy || null,
+    })),
     votesPerPerson: poll.votesPerPerson,
-    status: poll.status,
+    phase: pollPhase(poll),
     resultsRevealed: poll.resultsRevealed,
     isAdmin: isAdmin(),
     me,
