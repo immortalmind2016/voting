@@ -6,20 +6,23 @@ ready to deploy on **Vercel**.
 
 ## How it works
 
-- **You (organizer)** log into `/admin` with a password and create a poll. You
-  set **how many votes each person gets** and choose who supplies the options:
-  either you set them up front, or **participants add their own** during the
-  session.
-- Each poll moves through three phases you control:
-  1. **Collecting** — people join with a username and add their questions /
-     options (live). Skipped if you set the options yourself.
-  2. **Voting** — you hit *Start voting*; options lock and people cast up to N
-     votes, **one per option** (N votes = N different options).
-  3. **Closed** — you hit *Close voting* to stop it.
-- **Votes are not anonymous:** results show each option's tally *and* who voted
-  for it, plus who suggested each option.
-- **Results stay hidden** from voters until you hit *Reveal results*. Voter
-  pages update automatically as phases change.
+- **You (organizer)** log into `/admin` with a password and create a **board**
+  (a name + how many votes each person gets). Participants supply the questions.
+- A board moves through phases — **every transition is a manual click; timers
+  never auto-advance**:
+  1. **Lobby** — people open the link and join with just a username (no
+     approval).
+  2. **Questions** — you start this phase (optionally with a countdown timer);
+     participants write questions live. You close it when ready.
+  3. **Review** — questions are locked; nothing happens until you start voting.
+  4. **Voting** — you start it (optional timer); each person votes for up to N
+     different questions (one vote each). You close it when ready.
+  5. **Closed** — results are visible to everyone.
+- Timers are just a **visible countdown** to keep the room on pace — reaching
+  zero does not close anything; you always close manually.
+- **Votes are not anonymous:** once closed, everyone sees each question's tally
+  and can open its list of voters. Each question also shows who wrote it.
+- Voter pages update automatically as you change phases.
 
 ## 1. Set up MongoDB (Atlas — free tier is fine)
 

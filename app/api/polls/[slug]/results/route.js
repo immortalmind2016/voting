@@ -3,19 +3,19 @@ import { getDb } from '@/lib/mongodb';
 import { isAdmin } from '@/lib/auth';
 import { pollPhase } from '@/lib/poll';
 
-// Tallies, including who voted for each option (votes are not anonymous).
-// Admins can always see them; voters only once results are revealed.
+// Tallies, including who voted for each question (votes are not anonymous).
+// Everyone can see them once voting is closed; the admin can always see them.
 export async function GET(request, { params }) {
   const { slug } = params;
   const db = await getDb();
   const poll = await db.collection('polls').findOne({ slug });
   if (!poll) {
-    return NextResponse.json({ error: 'Poll not found' }, { status: 404 });
+    return NextResponse.json({ error: 'Board not found' }, { status: 404 });
   }
 
   const phase = pollPhase(poll);
   const admin = isAdmin();
-  if (!poll.resultsRevealed && !admin) {
+  if (phase !== 'closed' && !admin) {
     return NextResponse.json({ revealed: false, phase });
   }
 

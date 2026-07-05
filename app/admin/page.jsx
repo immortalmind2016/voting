@@ -2,10 +2,12 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import Bars from '@/app/components/Bars';
+import Countdown from '@/app/components/Countdown';
+import { PHASE_LABEL } from '@/lib/poll';
 
 export default function AdminPage() {
   const [authed, setAuthed] = useState(null); // null = loading
-  const [polls, setPolls] = useState([]);
+  const [boards, setBoards] = useState([]);
 
   const load = useCallback(async () => {
     const res = await fetch('/api/polls');
@@ -14,12 +16,14 @@ export default function AdminPage() {
       return;
     }
     const data = await res.json();
-    setPolls(data.polls || []);
+    setBoards(data.polls || []);
     setAuthed(true);
   }, []);
 
   useEffect(() => {
     load();
+    const t = setInterval(load, 5000); // keep counts/questions fresh
+    return () => clearInterval(t);
   }, [load]);
 
   if (authed === null) return <p className="muted">Loading…</p>;
@@ -40,14 +44,14 @@ export default function AdminPage() {
         </button>
       </div>
 
-      <CreatePoll onCreated={load} />
+      <CreateBoard onCreated={load} />
 
-      <h2 className="mt">Your polls</h2>
-      {polls.length === 0 && (
-        <p className="muted">No polls yet. Create one above.</p>
+      <h2 className="mt">Your boards</h2>
+      {boards.length === 0 && (
+        <p className="muted">No boards yet. Create one above.</p>
       )}
-      {polls.map((p) => (
-        <PollRow key={p.slug} poll={p} onChange={load} />
+      {boards.map((b) => (
+        <BoardRow key={b.slug} board={b} onChange={load} />
       ))}
     </main>
   );
@@ -92,24 +96,12 @@ function Login({ onDone }) {
   );
 }
 
-function CreatePoll({ onCreated }) {
+function CreateBoard({ onCreated }) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [collect, setCollect] = useState(true);
-  const [options, setOptions] = useState(['', '']);
   const [votesPerPerson, setVotesPerPerson] = useState(1);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-
-  function setOption(i, v) {
-    setOptions((o) => o.map((x, idx) => (idx === i ? v : x)));
-  }
-  function addOption() {
-    setOptions((o) => [...o, '']);
-  }
-  function removeOption(i) {
-    setOptions((o) => (o.length <= 1 ? o : o.filter((_, idx) => idx !== i)));
-  }
 
   async function submit(e) {
     e.preventDefault();
@@ -118,13 +110,7 @@ function CreatePoll({ onCreated }) {
     const res = await fetch('/api/polls', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        title,
-        description,
-        options,
-        votesPerPerson,
-        collectFromParticipants: collect,
-      }),
+      body: JSON.stringify({ title, description, votesPerPerson }),
     });
     setBusy(false);
     const data = await res.json().catch(() => ({}));
@@ -134,22 +120,20 @@ function CreatePoll({ onCreated }) {
     }
     setTitle('');
     setDescription('');
-    setOptions(['', '']);
     setVotesPerPerson(1);
-    setCollect(true);
     onCreated();
   }
 
   return (
     <form className="card" onSubmit={submit}>
-      <h2>New poll</h2>
+      <h2>New board</h2>
       <div className="field">
-        <label>Title / question</label>
+        <label>Board name</label>
         <input
           type="text"
           value={title}
           dir="auto"
-          placeholder="e.g. Which features should we build next?"
+          placeholder="e.g. Team retro — July"
           onChange={(e) => setTitle(e.target.value)}
         />
       </div>
@@ -161,65 +145,6 @@ function CreatePoll({ onCreated }) {
           onChange={(e) => setDescription(e.target.value)}
         />
       </div>
-
-      <div className="field">
-        <label>Who adds the options?</label>
-        <div className="row">
-          <label className="option" style={{ flex: 1, marginBottom: 0 }}>
-            <input
-              type="radio"
-              checked={collect}
-              onChange={() => setCollect(true)}
-            />
-            <span>Participants add them in the session</span>
-          </label>
-          <label className="option" style={{ flex: 1, marginBottom: 0 }}>
-            <input
-              type="radio"
-              checked={!collect}
-              onChange={() => setCollect(false)}
-            />
-            <span>I&apos;ll set them now</span>
-          </label>
-        </div>
-      </div>
-
-      <div className="field">
-        <label>
-          {collect ? 'Starting options (optional)' : 'Options / statements'}
-        </label>
-        {options.map((opt, i) => (
-          <div className="row" key={i} style={{ marginBottom: 8 }}>
-            <input
-              type="text"
-              value={opt}
-              dir="auto"
-              placeholder={`Option ${i + 1}`}
-              onChange={(e) => setOption(i, e.target.value)}
-              style={{ flex: 1 }}
-            />
-            <button
-              type="button"
-              className="ghost small"
-              onClick={() => removeOption(i)}
-              disabled={options.length <= 1}
-              title="Remove"
-            >
-              ✕
-            </button>
-          </div>
-        ))}
-        <button type="button" className="ghost small" onClick={addOption}>
-          + Add option
-        </button>
-        {collect && (
-          <div className="muted small mt">
-            You can leave these empty — participants add options during the
-            collecting phase, then you start the vote.
-          </div>
-        )}
-      </div>
-
       <div className="field" style={{ maxWidth: 220 }}>
         <label>Votes per person</label>
         <input
@@ -230,57 +155,59 @@ function CreatePoll({ onCreated }) {
           onChange={(e) => setVotesPerPerson(e.target.value)}
         />
         <div className="muted small mt">
-          Each person votes for up to this many different options (one vote per
-          option).
+          Each person can vote for up to this many different questions.
         </div>
       </div>
-
-      <button disabled={busy}>{busy ? 'Creating…' : 'Create poll'}</button>
+      <button disabled={busy}>{busy ? 'Creating…' : 'Create board'}</button>
       {error && <div className="error">{error}</div>}
+      <div className="muted small mt">
+        Participants write the questions after they join — you control when each
+        phase starts and ends.
+      </div>
     </form>
   );
 }
 
-function PollRow({ poll, onChange }) {
+function BoardRow({ board, onChange }) {
   const [shareUrl, setShareUrl] = useState('');
   const [copied, setCopied] = useState(false);
+  const [minutes, setMinutes] = useState(5);
   const [results, setResults] = useState(null);
   const [showResults, setShowResults] = useState(false);
 
   useEffect(() => {
-    setShareUrl(`${window.location.origin}/p/${poll.slug}`);
-  }, [poll.slug]);
+    setShareUrl(`${window.location.origin}/p/${board.slug}`);
+  }, [board.slug]);
 
   async function patch(update) {
-    const res = await fetch(`/api/polls/${poll.slug}/status`, {
+    const res = await fetch(`/api/polls/${board.slug}/status`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(update),
     });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
-      alert(data.error || 'Could not update poll');
+      alert(data.error || 'Could not update board');
     }
     onChange();
   }
 
-  async function deleteOption(id) {
-    await fetch(`/api/polls/${poll.slug}/options?id=${id}`, {
+  async function deleteQuestion(id) {
+    await fetch(`/api/polls/${board.slug}/options?id=${id}`, {
       method: 'DELETE',
     });
     onChange();
   }
 
   async function loadResults() {
-    const res = await fetch(`/api/polls/${poll.slug}/results`);
-    const data = await res.json();
-    setResults(data);
+    const res = await fetch(`/api/polls/${board.slug}/results`);
+    setResults(await res.json());
     setShowResults(true);
   }
 
   async function remove() {
-    if (!confirm(`Delete "${poll.title}" and all its votes?`)) return;
-    await fetch(`/api/polls/${poll.slug}/status`, { method: 'DELETE' });
+    if (!confirm(`Delete "${board.title}" and all its data?`)) return;
+    await fetch(`/api/polls/${board.slug}/status`, { method: 'DELETE' });
     onChange();
   }
 
@@ -290,29 +217,25 @@ function PollRow({ poll, onChange }) {
     setTimeout(() => setCopied(false), 1500);
   }
 
-  const phaseLabel = {
-    collecting: 'collecting options',
-    voting: 'voting open',
-    closed: 'closed',
-  }[poll.phase];
+  const mins = () => Math.max(0, parseInt(minutes, 10) || 0);
+  const phase = board.phase;
 
   return (
     <div className="card">
       <div className="row spread">
         <div>
           <bdi>
-            <strong>{poll.title}</strong>
+            <strong>{board.title}</strong>
           </bdi>{' '}
-          <span className={`badge ${poll.phase}`}>{phaseLabel}</span>{' '}
-          {poll.resultsRevealed && (
-            <span className="badge voting">results shown</span>
-          )}
+          <span className={`badge ${phase}`}>{PHASE_LABEL[phase]}</span>
         </div>
+        {board.timerEndsAt && <Countdown endsAt={board.timerEndsAt} />}
       </div>
       <div className="muted small mt">
-        {poll.options.length} options · {poll.votesPerPerson} vote
-        {poll.votesPerPerson > 1 ? 's' : ''}/person · {poll.participants} joined
-        · {poll.voted} voted
+        {board.questions.length} question
+        {board.questions.length === 1 ? '' : 's'} · {board.votesPerPerson} vote
+        {board.votesPerPerson > 1 ? 's' : ''}/person · {board.participants}{' '}
+        joined · {board.voted} voted
       </div>
 
       <div className="row mt">
@@ -324,27 +247,26 @@ function PollRow({ poll, onChange }) {
         </button>
       </div>
 
-      {/* submitted options + moderation while collecting */}
-      {poll.phase === 'collecting' && (
+      {/* Question list (while writing or reviewing) */}
+      {(phase === 'questions' || phase === 'review') && (
         <div className="mt">
           <div className="muted small mb">
-            Options so far ({poll.options.length}) — participants are adding
-            these live:
+            Questions ({board.questions.length})
           </div>
-          {poll.options.length === 0 && (
-            <div className="muted small">No options yet.</div>
+          {board.questions.length === 0 && (
+            <div className="muted small">No questions yet.</div>
           )}
-          {poll.options.map((o) => (
-            <div className="opt-item" key={o.id}>
+          {board.questions.map((q) => (
+            <div className="opt-item" key={q.id}>
               <span dir="auto" style={{ flex: 1 }}>
-                {o.text}
+                {q.text}
               </span>
-              {o.addedBy && (
+              {q.addedBy && (
                 <span className="who">
-                  by <bdi>{o.addedBy}</bdi>
+                  by <bdi>{q.addedBy}</bdi>
                 </span>
               )}
-              <button className="x" onClick={() => deleteOption(o.id)}>
+              <button className="x" onClick={() => deleteQuestion(q.id)}>
                 remove
               </button>
             </div>
@@ -352,34 +274,70 @@ function PollRow({ poll, onChange }) {
         </div>
       )}
 
-      <div className="row mt">
-        {poll.phase === 'collecting' && (
-          <button className="small" onClick={() => patch({ phase: 'voting' })}>
-            ▶ Start voting
-          </button>
-        )}
-        {poll.phase === 'voting' && (
+      {/* Phase controls */}
+      <div className="divider" />
+      <TimerField
+        minutes={minutes}
+        setMinutes={setMinutes}
+        show={phase === 'lobby' || phase === 'questions' || phase === 'review' || phase === 'voting'}
+      />
+      <div className="row">
+        {phase === 'lobby' && (
           <button
-            className="ghost small"
-            onClick={() => patch({ phase: 'closed' })}
+            onClick={() => patch({ phase: 'questions', timerMinutes: mins() })}
           >
-            Close voting
+            ▶ Start question writing
           </button>
         )}
-        {poll.phase === 'closed' && (
+        {phase === 'questions' && (
+          <>
+            <button
+              className="ghost"
+              onClick={() => patch({ timerMinutes: mins() })}
+            >
+              Set timer
+            </button>
+            <button onClick={() => patch({ phase: 'review' })}>
+              Close question writing
+            </button>
+          </>
+        )}
+        {phase === 'review' && (
+          <>
+            <button
+              className="ghost"
+              onClick={() => patch({ phase: 'questions' })}
+            >
+              Back to writing
+            </button>
+            <button
+              onClick={() => patch({ phase: 'voting', timerMinutes: mins() })}
+            >
+              ▶ Start voting
+            </button>
+          </>
+        )}
+        {phase === 'voting' && (
+          <>
+            <button
+              className="ghost"
+              onClick={() => patch({ timerMinutes: mins() })}
+            >
+              Set timer
+            </button>
+            <button onClick={() => patch({ phase: 'closed' })}>
+              Close voting
+            </button>
+          </>
+        )}
+        {phase === 'closed' && (
           <button
-            className="ghost small"
+            className="ghost"
             onClick={() => patch({ phase: 'voting' })}
           >
             Reopen voting
           </button>
         )}
-        <button
-          className="ghost small"
-          onClick={() => patch({ resultsRevealed: !poll.resultsRevealed })}
-        >
-          {poll.resultsRevealed ? 'Hide results from voters' : 'Reveal results'}
-        </button>
         <button className="ghost small" onClick={loadResults}>
           View tally
         </button>
@@ -394,7 +352,11 @@ function PollRow({ poll, onChange }) {
           <div className="muted small mb">
             {results.totalVoted} of {results.totalParticipants} joined have voted
           </div>
-          <Bars results={results.results} />
+          {results.results.length === 0 ? (
+            <p className="muted">No questions.</p>
+          ) : (
+            <Bars results={results.results} />
+          )}
           <button
             className="ghost small mt"
             onClick={() => setShowResults(false)}
@@ -403,6 +365,26 @@ function PollRow({ poll, onChange }) {
           </button>
         </>
       )}
+    </div>
+  );
+}
+
+function TimerField({ minutes, setMinutes, show }) {
+  if (!show) return null;
+  return (
+    <div className="row mb">
+      <label style={{ margin: 0 }} className="muted small">
+        Timer (min)
+      </label>
+      <input
+        className="timer-input"
+        type="number"
+        min={0}
+        max={600}
+        value={minutes}
+        onChange={(e) => setMinutes(e.target.value)}
+      />
+      <span className="muted small">0 = no timer</span>
     </div>
   );
 }

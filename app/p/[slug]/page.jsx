@@ -3,19 +3,21 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import Bars from '@/app/components/Bars';
+import Countdown from '@/app/components/Countdown';
+import { PHASE_LABEL } from '@/lib/poll';
 
 export default function VotePage() {
   const { slug } = useParams();
-  const [poll, setPoll] = useState(undefined); // undefined=loading, null=not found
+  const [board, setBoard] = useState(undefined); // undefined=loading, null=not found
   const [results, setResults] = useState(null);
 
-  const loadPoll = useCallback(async () => {
+  const loadBoard = useCallback(async () => {
     const res = await fetch(`/api/polls/${slug}`);
     if (res.status === 404) {
-      setPoll(null);
+      setBoard(null);
       return;
     }
-    if (res.ok) setPoll(await res.json());
+    if (res.ok) setBoard(await res.json());
   }, [slug]);
 
   const loadResults = useCallback(async () => {
@@ -24,60 +26,77 @@ export default function VotePage() {
   }, [slug]);
 
   useEffect(() => {
-    loadPoll();
-  }, [loadPoll]);
+    loadBoard();
+  }, [loadBoard]);
 
-  // Keep the page in sync as the organizer moves between phases and as other
-  // people add options / cast votes.
+  // Stay in sync as the organizer moves between phases and people write/vote.
   useEffect(() => {
     const t = setInterval(() => {
-      loadPoll();
+      loadBoard();
       loadResults();
     }, 4000);
     return () => clearInterval(t);
-  }, [loadPoll, loadResults]);
+  }, [loadBoard, loadResults]);
 
-  if (poll === undefined) return <p className="muted">Loading…</p>;
-  if (poll === null)
+  if (board === undefined) return <p className="muted">Loading…</p>;
+  if (board === null)
     return (
       <main>
-        <h1>Poll not found</h1>
-        <p className="muted">This link may be wrong or the poll was deleted.</p>
+        <h1>Board not found</h1>
+        <p className="muted">This link may be wrong or the board was deleted.</p>
       </main>
     );
 
-  const phaseLabel = {
-    collecting: 'collecting options',
-    voting: 'voting open',
-    closed: 'closed',
-  }[poll.phase];
+  const { phase } = board;
 
   return (
     <main>
-      <h1 dir="auto">{poll.title}</h1>
-      {poll.description && (
+      <h1 dir="auto">{board.title}</h1>
+      {board.description && (
         <p className="muted" dir="auto">
-          {poll.description}
+          {board.description}
         </p>
       )}
-      <div className="mt mb">
-        <span className={`badge ${poll.phase}`}>{phaseLabel}</span>
+      <div className="row mt mb">
+        <span className={`badge ${phase}`}>{PHASE_LABEL[phase]}</span>
+        {board.timerEndsAt && <Countdown endsAt={board.timerEndsAt} />}
       </div>
 
-      {!poll.me ? (
-        <Join slug={slug} onJoined={loadPoll} phase={poll.phase} />
-      ) : poll.phase === 'collecting' ? (
-        <Collecting slug={slug} poll={poll} onChange={loadPoll} />
-      ) : poll.phase === 'voting' && !poll.me.hasVoted ? (
-        <Ballot slug={slug} poll={poll} onVoted={loadPoll} />
+      {!board.me ? (
+        phase === 'closed' ? (
+          <Results board={board} results={results} joined={false} />
+        ) : (
+          <Join slug={slug} onJoined={loadBoard} />
+        )
+      ) : phase === 'lobby' ? (
+        <Waiting title={`You're in, ${board.me.username}`}>
+          Waiting for the organizer to start question writing…
+        </Waiting>
+      ) : phase === 'questions' ? (
+        <WriteQuestions slug={slug} board={board} onChange={loadBoard} />
+      ) : phase === 'review' ? (
+        <ReviewList board={board} />
+      ) : phase === 'voting' && !board.me.hasVoted ? (
+        <Ballot slug={slug} board={board} onVoted={loadBoard} />
       ) : (
-        <Done poll={poll} results={results} />
+        <Results board={board} results={results} joined />
       )}
     </main>
   );
 }
 
-function Join({ slug, onJoined, phase }) {
+function Waiting({ title, children }) {
+  return (
+    <div className="card">
+      <h2>
+        <bdi>{title}</bdi>
+      </h2>
+      <p className="muted">{children}</p>
+    </div>
+  );
+}
+
+function Join({ slug, onJoined }) {
   const [username, setUsername] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -100,14 +119,6 @@ function Join({ slug, onJoined, phase }) {
     onJoined();
   }
 
-  if (phase === 'closed') {
-    return (
-      <div className="card">
-        <p>This poll is closed — you can no longer join.</p>
-      </div>
-    );
-  }
-
   return (
     <form className="card" onSubmit={submit}>
       <h2>Pick a username to join</h2>
@@ -128,7 +139,7 @@ function Join({ slug, onJoined, phase }) {
   );
 }
 
-function Collecting({ slug, poll, onChange }) {
+function WriteQuestions({ slug, board, onChange }) {
   const [text, setText] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -146,7 +157,7 @@ function Collecting({ slug, poll, onChange }) {
     setBusy(false);
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      setError(data.error || 'Could not add option');
+      setError(data.error || 'Could not add question');
       return;
     }
     setText('');
@@ -161,11 +172,11 @@ function Collecting({ slug, poll, onChange }) {
   return (
     <div className="card">
       <h2>
-        You&apos;re in, <bdi>{poll.me.username}</bdi>
+        Write your questions, <bdi>{board.me.username}</bdi>
       </h2>
       <p className="muted small mb">
-        Add your questions or options below. Voting hasn&apos;t started yet —
-        this list updates live as others add theirs.
+        Add as many questions as you like. This list updates live as others add
+        theirs. Voting hasn&apos;t started yet.
       </p>
 
       <form className="row" onSubmit={add} style={{ marginBottom: 14 }}>
@@ -174,7 +185,7 @@ function Collecting({ slug, poll, onChange }) {
           value={text}
           dir="auto"
           maxLength={200}
-          placeholder="Add a question / option…"
+          placeholder="Type a question…"
           onChange={(e) => setText(e.target.value)}
           style={{ flex: 1 }}
         />
@@ -183,37 +194,58 @@ function Collecting({ slug, poll, onChange }) {
       {error && <div className="error mb">{error}</div>}
 
       <div className="muted small mb">
-        {poll.options.length} option{poll.options.length === 1 ? '' : 's'} so far
+        {board.questions.length} question
+        {board.questions.length === 1 ? '' : 's'} so far
       </div>
-      {poll.options.map((o) => (
-        <div className="opt-item" key={o.id}>
+      {board.questions.map((q) => (
+        <div className="opt-item" key={q.id}>
           <span dir="auto" style={{ flex: 1 }}>
-            {o.text}
+            {q.text}
           </span>
-          {o.addedBy && (
+          {q.addedBy && (
             <span className="who">
-              by <bdi>{o.addedBy}</bdi>
+              by <bdi>{q.addedBy}</bdi>
             </span>
           )}
-          {o.addedBy === poll.me.username && (
-            <button className="x" onClick={() => remove(o.id)}>
+          {q.addedBy === board.me.username && (
+            <button className="x" onClick={() => remove(q.id)}>
               remove
             </button>
           )}
         </div>
       ))}
-
-      <div className="divider" />
-      <p className="muted small">Waiting for the organizer to start voting…</p>
     </div>
   );
 }
 
-function Ballot({ slug, poll, onVoted }) {
+function ReviewList({ board }) {
+  return (
+    <div className="card">
+      <h2>Questions are in</h2>
+      <p className="muted small mb">
+        Writing is closed. Waiting for the organizer to start voting…
+      </p>
+      {board.questions.map((q) => (
+        <div className="opt-item" key={q.id}>
+          <span dir="auto" style={{ flex: 1 }}>
+            {q.text}
+          </span>
+          {q.addedBy && (
+            <span className="who">
+              by <bdi>{q.addedBy}</bdi>
+            </span>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function Ballot({ slug, board, onVoted }) {
   const [selected, setSelected] = useState([]);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  const max = poll.votesPerPerson;
+  const max = board.votesPerPerson;
   const atLimit = selected.length >= max;
 
   function toggle(id) {
@@ -245,20 +277,20 @@ function Ballot({ slug, poll, onVoted }) {
     <div className="card">
       <div className="row spread mb">
         <h2 style={{ margin: 0 }}>
-          Hi <bdi>{poll.me.username}</bdi> — cast your vote
+          Vote, <bdi>{board.me.username}</bdi>
         </h2>
       </div>
       <p className="muted small mb">
-        Pick up to <strong>{max}</strong> option{max > 1 ? 's' : ''} (one vote
+        Pick up to <strong>{max}</strong> question{max > 1 ? 's' : ''} (one vote
         each). Selected {selected.length}/{max}.
       </p>
 
-      {poll.options.map((o) => {
-        const isSel = selected.includes(o.id);
+      {board.questions.map((q) => {
+        const isSel = selected.includes(q.id);
         const disabled = !isSel && atLimit;
         return (
           <label
-            key={o.id}
+            key={q.id}
             className={`option ${isSel ? 'selected' : ''} ${
               disabled ? 'disabled' : ''
             }`}
@@ -267,10 +299,10 @@ function Ballot({ slug, poll, onVoted }) {
               type="checkbox"
               checked={isSel}
               disabled={disabled}
-              onChange={() => toggle(o.id)}
+              onChange={() => toggle(q.id)}
             />
             <span dir="auto" style={{ flex: 1 }}>
-              {o.text}
+              {q.text}
             </span>
           </label>
         );
@@ -288,15 +320,16 @@ function Ballot({ slug, poll, onVoted }) {
   );
 }
 
-function Done({ poll, results }) {
+function Results({ board, results, joined }) {
+  const closed = board.phase === 'closed';
   return (
     <div className="card">
-      {poll.me?.hasVoted ? (
+      {joined && board.me?.hasVoted ? (
         <p className="ok">
-          ✓ Thanks <bdi>{poll.me.username}</bdi>, your vote is in.
+          ✓ Thanks <bdi>{board.me.username}</bdi>, your vote is in.
         </p>
-      ) : poll.phase === 'closed' ? (
-        <p>This poll is closed.</p>
+      ) : closed ? (
+        <p>Voting is closed.</p>
       ) : (
         <p>Voting is open — but you haven&apos;t voted yet.</p>
       )}
@@ -307,13 +340,18 @@ function Done({ poll, results }) {
           <h2>Results</h2>
           <div className="muted small mb">
             {results.totalVoted} of {results.totalParticipants} joined have voted
+            · open any question to see who voted for it
           </div>
-          <Bars results={results.results} />
+          {results.results.length === 0 ? (
+            <p className="muted">No questions were added.</p>
+          ) : (
+            <Bars results={results.results} />
+          )}
         </>
       ) : (
         <p className="muted small mt">
-          Results aren&apos;t published yet — this page updates automatically
-          when the organizer reveals them.
+          Results appear here once the organizer closes voting. This page
+          updates automatically.
         </p>
       )}
     </div>

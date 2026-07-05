@@ -19,10 +19,10 @@ export async function POST(request, { params }) {
   const db = await getDb();
   const poll = await db.collection('polls').findOne({ slug });
   if (!poll) {
-    return NextResponse.json({ error: 'Poll not found' }, { status: 404 });
+    return NextResponse.json({ error: 'Board not found' }, { status: 404 });
   }
   if (pollPhase(poll) === 'closed') {
-    return NextResponse.json({ error: 'This poll is closed' }, { status: 403 });
+    return NextResponse.json({ error: 'This board is closed' }, { status: 403 });
   }
 
   const filter = { pollId: poll._id, usernameLower: name.toLowerCase() };

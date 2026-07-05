@@ -196,13 +196,39 @@ button.danger {
   background: rgba(53, 196, 106, 0.15);
   color: var(--good);
 }
-.badge.collecting {
+.badge.questions {
   background: rgba(240, 180, 41, 0.16);
   color: var(--warn);
+}
+.badge.review {
+  background: rgba(108, 140, 255, 0.16);
+  color: var(--accent);
+}
+.badge.lobby {
+  background: rgba(120, 130, 150, 0.16);
+  color: var(--muted);
 }
 .badge.closed {
   background: rgba(255, 107, 107, 0.15);
   color: var(--bad);
+}
+
+.timer {
+  display: inline-block;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-weight: 700;
+  font-size: 0.9rem;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(108, 140, 255, 0.14);
+  color: var(--accent);
+}
+.timer.up {
+  background: rgba(255, 107, 107, 0.15);
+  color: var(--bad);
+}
+.timer-input {
+  width: 68px;
 }
 .badge.revealed {
   background: rgba(108, 140, 255, 0.18);
